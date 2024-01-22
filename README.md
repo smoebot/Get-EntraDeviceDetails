@@ -1,0 +1,2 @@
+# Get-EntraDeviceDetails
+Powershell
