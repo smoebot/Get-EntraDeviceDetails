@@ -10,8 +10,9 @@ function Get-EntraDeviceDetails {
     .NOTES
         Author: Joel Ashman
         v0.1 - (2023-12-20) Initial version
+        v0.2 - (2024-02-08) Added better error handling
     .EXAMPLE
-        Get-DeviceDetails -AssetName madeupassetname
+        Get-EntraDeviceDetails -AssetName yellowbus.petermanrealitytour.com
     #>
 
     #requires -version 7
@@ -22,10 +23,19 @@ function Get-EntraDeviceDetails {
         [string]$AssetName
     )
     
-
     function Get-DeviceInfo{
-        $BaseDeviceInfo =Get-MgDevice -Filter "startswith(DisplayName, '$($AssetName)')" | Select-Object Id,DisplayName,OperatingSystem,OperatingSystemVersion,DeviceCategory,DeviceOwnership,IsManaged,DeviceID,ProfileType,TrustType,ApproximateLastSignInDateTime
-        $DeviceOwnerInfo = (Get-MgDeviceRegisteredOwner -DeviceId $BaseDeviceInfo.Id).AdditionalProperties
+        $BaseDeviceInfo = try{
+            Get-MgDevice -Filter "startswith(DisplayName, '$($AssetName)')" | Select-Object Id,DisplayName,OperatingSystem,OperatingSystemVersion,DeviceCategory,DeviceOwnership,IsManaged,DeviceID,ProfileType,TrustType,ApproximateLastSignInDateTime
+        }
+        catch{
+            Write-Host -ForegroundColor Red "`r`nCouldn't find $($AssetName).  Exiting`r`n"
+        }
+        $DeviceOwnerInfo = try{
+            (Get-MgDeviceRegisteredOwner -DeviceId $BaseDeviceInfo.Id).AdditionalProperties
+        }
+        catch{
+            Write-Host -ForegroundColor Red "Couldn't find the registered owner.  Probably due to $($AssetName) not being found.  Exiting"
+        }
         $DeviceInfo = [pscustomobject]@{
             "DisplayName" = $BaseDeviceInfo.DisplayName
             "Id" = $BaseDeviceInfo.Id
@@ -45,10 +55,14 @@ function Get-EntraDeviceDetails {
             "OwnerSurname" = $DeviceOwnerInfo.surname
             "OwnerUserPrincipalName" = $DeviceOwnerInfo.userPrincipalName
         }
-        $DeviceInfo
+        # Show the Device details if the first lookup was successful, exit otherwise
+        if ($BaseDeviceInfo){
+            $DeviceInfo
+        }
+        else {
+            Return
+        }
     }
-
-
 
     # Check if the user is connected to Microsoft Graph first
     $ConnectedCheck = Get-MgContext
@@ -64,9 +78,8 @@ function Get-EntraDeviceDetails {
         }
         # Bail out if we didn't authenticate properly
         catch{
-            Write-Host -ForegroundColor Red "Something went wrong.  Not authenticated to MS Graph API.  Exiting"
+            Write-Host -ForegroundColor Red "`r`nSomething went wrong.  Not authenticated to MS Graph API.  Exiting`r`n"
         }
-        
     }
 
     # If we are already authenticated, then run as normal
